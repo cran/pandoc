@@ -1,4 +1,3 @@
-
 # About how to install version --------------------------------------------
 
 with_download_cache <- function(version, bundle_name, code) {
@@ -205,8 +204,11 @@ pandoc_release_asset <- function(version, os = pandoc_os(), arch = pandoc_arch(o
     version <- releases[[1]]$tag_name
   } else {
     # special known cases
-    if (os == "linux" && arch == "arm64" && numeric_version(version) <= "2.12") {
+    if (os == "linux" && arch == "arm64" && numeric_version(version) < "2.12") {
       rlang::abort("Pandoc binaries for arm64 are available for 2.12 and above only")
+    }
+    if (os == "macOS" && arch == "arm64" && numeric_version(version) < "3.1.2") {
+      rlang::abort("Pandoc binaries for arm64 on Mac are available for 3.1.2 and above only")
     }
     if (version == "2.2.3") {
       rlang::abort(c(
@@ -248,8 +250,20 @@ pandoc_bundle_name <- function(version, os = pandoc_os(), arch = pandoc_arch(os)
     macOS = ,
     windows = ".zip"
   )
-  arch <- if (!is.null(arch)) sprintf("(-%s)?", arch)
-  regex <- paste0("pandoc-", version, "(-\\d)?", "-", os, arch, ext)
+  r_os <- sprintf("(-%s)?", os)
+  r_arch <- sprintf("(-%s)?", arch)
+  r_os_arch <- paste0(r_os, r_arch)
+
+  # Architecture is in bundle name since pandoc 3.1.2, and with another order
+  if (os == "macOS") {
+    if (as.numeric_version(version) < "3.1.2") {
+    r_os_arch <- r_os
+    } else {
+      r_os_arch <- paste0(r_arch, r_os)
+    }
+  }
+
+  regex <- paste0("pandoc-", version, "(-\\d)?", r_os_arch, ext)
   gsub("\\.", "\\\\.", regex)
 }
 
@@ -260,13 +274,13 @@ pandoc_releases <- function() {
     if (!is.na(cached)) {
       # use same ~ on all OS
       if (fs::path_ext(cached) == "rds" && fs::file_exists(cached)) {
-      rlang::inform(c(
-        "i" = sprintf(
-          "Using cached version '%s' in instead of fetching GH",
-          fs::path_file(cached)
-        )
-      ))
-      readRDS(cached)
+        rlang::inform(c(
+          "i" = sprintf(
+            "Using cached version '%s' in instead of fetching GH",
+            fs::path_file(cached)
+          )
+        ))
+        readRDS(cached)
       }
     } else {
       fetch_gh_releases()
@@ -303,7 +317,12 @@ pandoc_arch <- function(os = c("windows", "macOS", "linux")) {
       return("arm64")
     }
   } else if (os == "macOS") {
-    return()
+    if (arch == "x86_64") {
+      return("x86_64")
+    }
+    if (arch %in% c("aarch64", "arm64")) {
+      return("arm64")
+    }
   }
   rlang::abort("No binary bundle available for this architecture")
 }
